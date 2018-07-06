@@ -1,3 +1,6 @@
+#![feature(rust_2018_preview, use_extern_macros)]
+#![warn(rust_2018_idioms)]
+
 //! # Slog -  Structured, extensible, composable logging for Rust
 //!
 //! `slog-rs` is an ecosystem of reusable components for structured, extensible,
@@ -341,6 +344,19 @@ use std::string::String;
 use std::sync::Arc;
 // }}}
 
+macro_rules! macro_alias {
+    (@ ($dol:tt) $orig:ident, $alias:ident) => {
+        #[macro_export]
+        /// Alias to avoid name collision
+        macro_rules! $alias {
+            ($dol ( $dol args:tt )* ) => { $crate::$orig!($dol ( $dol args )*) }
+        }
+    };
+    ($orig:ident, $alias:ident) => {
+        macro_alias!(@ ($) $orig, $alias);
+    }
+}
+
 // {{{ Macros
 /// Macro for building group of key-value pairs:
 /// [`OwnedKV`](struct.OwnedKV.html)
@@ -360,19 +376,11 @@ use std::sync::Arc;
 #[macro_export]
 macro_rules! o(
     ($($args:tt)*) => {
-        $crate::OwnedKV(kv!($($args)*))
+        $crate::OwnedKV($crate::kv!($($args)*))
     };
 );
 
-/// Macro for building group of key-value pairs (alias)
-///
-/// Use in case of macro name collisions
-#[macro_export]
-macro_rules! slog_o(
-    ($($args:tt)*) => {
-        $crate::OwnedKV(slog_kv!($($args)*))
-    };
-);
+macro_alias!(o, slog_o);
 
 /// Macro for building group of key-value pairs in
 /// [`BorrowedKV`](struct.BorrowedKV.html)
@@ -382,17 +390,11 @@ macro_rules! slog_o(
 #[macro_export]
 macro_rules! b(
     ($($args:tt)*) => {
-        $crate::BorrowedKV(&kv!($($args)*))
+        $crate::BorrowedKV(&$crate::kv!($($args)*))
     };
 );
 
-/// Alias of `b`
-#[macro_export]
-macro_rules! slog_b(
-    ($($args:tt)*) => {
-        $crate::BorrowedKV(&slog_kv!($($args)*))
-    };
-);
+macro_alias!(b, slog_b);
 
 /// Macro for build `KV` implementing type
 ///
@@ -434,48 +436,12 @@ macro_rules! kv(
     };
 );
 
-/// Alias of `kv`
-#[macro_export]
-macro_rules! slog_kv(
-    (@ $args_ready:expr; $k:expr => %$v:expr) => {
-        slog_kv!(@ ($crate::SingleKV::from(($k, $crate::FmtDisplay($v))), $args_ready); )
-    };
-    (@ $args_ready:expr; $k:expr => %$v:expr, $($args:tt)* ) => {
-        slog_kv!(@ ($crate::SingleKV::from(($k, $crate::FmtDisplay($v))), $args_ready); $($args)* )
-    };
-    (@ $args_ready:expr; $k:expr => ?$v:expr) => {
-        kv!(@ ($crate::SingleKV::from(($k, $crate::FmtDebug($v))), $args_ready); )
-    };
-    (@ $args_ready:expr; $k:expr => ?$v:expr, $($args:tt)* ) => {
-        kv!(@ ($crate::SingleKV::from(($k, $crate::FmtDebug($v))), $args_ready); $($args)* )
-    };
-    (@ $args_ready:expr; $k:expr => $v:expr) => {
-        slog_kv!(@ ($crate::SingleKV::from(($k, $v)), $args_ready); )
-    };
-    (@ $args_ready:expr; $k:expr => $v:expr, $($args:tt)* ) => {
-        slog_kv!(@ ($crate::SingleKV::from(($k, $v)), $args_ready); $($args)* )
-    };
-    (@ $args_ready:expr; $slog_kv:expr) => {
-        slog_kv!(@ ($slog_kv, $args_ready); )
-    };
-    (@ $args_ready:expr; $slog_kv:expr, $($args:tt)* ) => {
-        slog_kv!(@ ($slog_kv, $args_ready); $($args)* )
-    };
-    (@ $args_ready:expr; ) => {
-        $args_ready
-    };
-    (@ $args_ready:expr;, ) => {
-        $args_ready
-    };
-    ($($args:tt)*) => {
-        slog_kv!(@ (); $($args)*)
-    };
-);
+macro_alias!(kv, slog_kv);
 
 #[macro_export]
 /// Create `RecordStatic` at the given code location
 macro_rules! record_static(
-    ($lvl:expr, $tag:expr,) => { record_static!($lvl, $tag) };
+    ($lvl:expr, $tag:expr,) => { $crate::record_static!($lvl, $tag) };
     ($lvl:expr, $tag:expr) => {{
         static LOC : $crate::RecordLocation = $crate::RecordLocation {
             file: file!(),
@@ -492,51 +458,22 @@ macro_rules! record_static(
     }};
 );
 
-#[macro_export]
-/// Create `RecordStatic` at the given code location (alias)
-macro_rules! slog_record_static(
-    ($lvl:expr, $tag:expr,) => { slog_record_static!($lvl, $tag) };
-    ($lvl:expr, $tag:expr) => {{
-        static LOC : $crate::RecordLocation = $crate::RecordLocation {
-            file: file!(),
-            line: line!(),
-            column: column!(),
-            function: "",
-            module: module_path!(),
-        };
-        $crate::RecordStatic {
-            location : &LOC,
-            level: $lvl,
-            tag: $tag,
-        }
-    }};
-);
+macro_alias!(record_static, slog_record_static);
 
 #[macro_export]
 /// Create `Record` at the given code location
 macro_rules! record(
     ($lvl:expr, $tag:expr, $args:expr, $b:expr,) => {
-        record!($lvl, $tag, $args, $b)
+        $crate::record!($lvl, $tag, $args, $b)
     };
     ($lvl:expr, $tag:expr, $args:expr, $b:expr) => {{
         #[allow(dead_code)]
-        static RS : $crate::RecordStatic<'static> = record_static!($lvl, $tag);
+        static RS : $crate::RecordStatic<'static> = $crate::record_static!($lvl, $tag);
         $crate::Record::new(&RS, $args, $b)
     }};
 );
 
-#[macro_export]
-/// Create `Record` at the given code location (alias)
-macro_rules! slog_record(
-    ($lvl:expr, $tag:expr, $args:expr, $b:expr,) => {
-        slog_record!($lvl, $tag, $args, $b)
-    };
-    ($lvl:expr, $tag:expr, $args:expr, $b:expr) => {{
-        static RS : $crate::RecordStatic<'static> = slog_record_static!($lvl,
-                                                                        $tag);
-        $crate::Record::new(&RS, $args, $b)
-    }};
-);
+macro_alias!(record, slog_record);
 
 /// Log message a logging record
 ///
@@ -726,155 +663,71 @@ macro_rules! log(
       $l.log(&record!($lvl, $tag, &format_args!($msg_fmt, $($fmt)*), b!($($kv)*)))
    };
    (2 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr,) => {
-       log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
    };
    (2 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr;) => {
-       log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
    };
    (2 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $($args:tt)*) => {
-       log!(2 @ { $($fmt)* }, { $($kv)* $($args)*}, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* }, { $($kv)* $($args)*}, $l, $lvl, $tag, $msg_fmt)
    };
     // `1` means that we are still looking for `;`
     // -- handle named arguments to format string
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr) => {
-       log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
    };
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr;) => {
-       log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
    };
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr,) => {
-       log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
    };
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr; $($args:tt)*) => {
-       log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt, $($args)*)
+       $crate::log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt, $($args)*)
    };
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr, $($args:tt)*) => {
-       log!(1 @ { $($fmt)* $k = $v, }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt, $($args)*)
+       $crate::log!(1 @ { $($fmt)* $k = $v, }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt, $($args)*)
    };
     // -- look for `;` termination
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr,) => {
-       log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
    };
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr) => {
-       log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
+       $crate::log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
    };
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, ; $($args:tt)*) => {
-       log!(1 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt; $($args)*)
+       $crate::log!(1 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt; $($args)*)
    };
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr; $($args:tt)*) => {
-       log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt, $($args)*)
+       $crate::log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt, $($args)*)
    };
     // -- must be normal argument to format string
    (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $f:tt $($args:tt)*) => {
-       log!(1 @ { $($fmt)* $f }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt, $($args)*)
+       $crate::log!(1 @ { $($fmt)* $f }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt, $($args)*)
    };
    ($l:expr, $lvl:expr, $tag:expr, $($args:tt)*) => {
        if $lvl.as_usize() <= $crate::__slog_static_max_level().as_usize() {
-           log!(1 @ { }, { }, $l, $lvl, $tag, $($args)*)
+           $crate::log!(1 @ { }, { }, $l, $lvl, $tag, $($args)*)
        }
    };
 );
 
-/// Log message a logging record (alias)
-///
-/// Prefer [shorter version](macro.log.html), unless it clashes with
-/// existing `log` crate macro.
-///
-/// See [`log`](macro.log.html) for documentation.
-///
-/// ```
-/// #[macro_use(slog_o,slog_b,slog_record,slog_record_static,slog_log,slog_info,slog_kv)]
-/// extern crate slog;
-///
-/// fn main() {
-///     let log = slog::Logger::root(slog::Discard, slog_o!());
-///
-///     slog_info!(log, "some interesting info"; "where" => "right here");
-/// }
-/// ```
-#[macro_export]
-macro_rules! slog_log(
-    // `2` means that `;` was already found
-   (2 @ { $($fmt:tt)* }, { $($kv:tt)* },  $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr) => {
-      $l.log(&slog_record!($lvl, $tag, &format_args!($msg_fmt, $($fmt)*), slog_b!($($kv)*)))
-   };
-   (2 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr,) => {
-       slog_log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
-   };
-   (2 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr;) => {
-       slog_log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
-   };
-   (2 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $($args:tt)*) => {
-       slog_log!(2 @ { $($fmt)* }, { $($kv)* $($args)*}, $l, $lvl, $tag, $msg_fmt)
-   };
-    // `1` means that we are still looking for `;`
-    // -- handle named arguments to format string
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr) => {
-       slog_log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
-   };
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr;) => {
-       slog_log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
-   };
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr,) => {
-       slog_log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt)
-   };
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr; $($args:tt)*) => {
-       slog_log!(2 @ { $($fmt)* $k = $v }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt, $($args)*)
-   };
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $k:ident = $v:expr, $($args:tt)*) => {
-       slog_log!(1 @ { $($fmt)* $k = $v, }, { $($kv)* stringify!($k) => $v, }, $l, $lvl, $tag, $msg_fmt, $($args)*)
-   };
-    // -- look for `;` termination
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr,) => {
-       slog_log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
-   };
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr) => {
-       slog_log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt)
-   };
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, ; $($args:tt)*) => {
-       slog_log!(1 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt; $($args)*)
-   };
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr; $($args:tt)*) => {
-       slog_log!(2 @ { $($fmt)* }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt, $($args)*)
-   };
-    // -- must be normal argument to format string
-   (1 @ { $($fmt:tt)* }, { $($kv:tt)* }, $l:expr, $lvl:expr, $tag:expr, $msg_fmt:expr, $f:tt $($args:tt)*) => {
-       slog_log!(1 @ { $($fmt)* $f }, { $($kv)* }, $l, $lvl, $tag, $msg_fmt, $($args)*)
-   };
-   ($l:expr, $lvl:expr, $tag:expr, $($args:tt)*) => {
-       if $lvl.as_usize() <= $crate::__slog_static_max_level().as_usize() {
-           slog_log!(1 @ { }, { }, $l, $lvl, $tag, $($args)*)
-       }
-   };
-);
+macro_alias!(log, slog_log);
+
 /// Log critical level record
 ///
 /// See `log` for documentation.
 #[macro_export]
 macro_rules! crit(
     ($l:expr, #$tag:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Critical, $tag, $($args)+)
+        $crate::log!($l, $crate::Level::Critical, $tag, $($args)+)
     };
     ($l:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Critical, "", $($args)+)
+        $crate::log!($l, $crate::Level::Critical, "", $($args)+)
     };
 );
 
-/// Log critical level record (alias)
-///
-/// Prefer shorter version, unless it clashes with
-/// existing `log` crate macro.
-///
-/// See `slog_log` for documentation.
-#[macro_export]
-macro_rules! slog_crit(
-    ($l:expr, #$tag:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Critical, $tag, $($args)+)
-    };
-    ($l:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Critical, "", $($args)+)
-    };
-);
+macro_alias!(crit, slog_crit);
 
 /// Log error level record
 ///
@@ -882,28 +735,14 @@ macro_rules! slog_crit(
 #[macro_export]
 macro_rules! error(
     ($l:expr, #$tag:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Error, $tag, $($args)+)
+        $crate::log!($l, $crate::Level::Error, $tag, $($args)+)
     };
     ($l:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Error, "", $($args)+)
+        $crate::log!($l, $crate::Level::Error, "", $($args)+)
     };
 );
 
-/// Log error level record
-///
-/// Prefer shorter version, unless it clashes with
-/// existing `log` crate macro.
-///
-/// See `slog_log` for documentation.
-#[macro_export]
-macro_rules! slog_error(
-    ($l:expr, #$tag:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Error, $tag, $($args)+)
-    };
-    ($l:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Error, "", $($args)+)
-    };
-);
+macro_alias!(error, slog_error);
 
 /// Log warning level record
 ///
@@ -911,28 +750,14 @@ macro_rules! slog_error(
 #[macro_export]
 macro_rules! warn(
     ($l:expr, #$tag:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Warning, $tag, $($args)+)
+        $crate::log!($l, $crate::Level::Warning, $tag, $($args)+)
     };
     ($l:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Warning, "", $($args)+)
+        $crate::log!($l, $crate::Level::Warning, "", $($args)+)
     };
 );
 
-/// Log warning level record (alias)
-///
-/// Prefer shorter version, unless it clashes with
-/// existing `log` crate macro.
-///
-/// See `slog_log` for documentation.
-#[macro_export]
-macro_rules! slog_warn(
-    ($l:expr, #$tag:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Warning, $tag, $($args)+)
-    };
-    ($l:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Warning, "", $($args)+)
-    };
-);
+macro_alias!(warn, slog_warn);
 
 /// Log info level record
 ///
@@ -940,28 +765,14 @@ macro_rules! slog_warn(
 #[macro_export]
 macro_rules! info(
     ($l:expr, #$tag:expr, $($args:tt)*) => {
-        log!($l, $crate::Level::Info, $tag, $($args)*)
+        $crate::log!($l, $crate::Level::Info, $tag, $($args)*)
     };
     ($l:expr, $($args:tt)*) => {
-        log!($l, $crate::Level::Info, "", $($args)*)
+        $crate::log!($l, $crate::Level::Info, "", $($args)*)
     };
 );
 
-/// Log info level record (alias)
-///
-/// Prefer shorter version, unless it clashes with
-/// existing `log` crate macro.
-///
-/// See `slog_log` for documentation.
-#[macro_export]
-macro_rules! slog_info(
-    ($l:expr, #$tag:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Info, $tag, $($args)+)
-    };
-    ($l:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Info, "", $($args)+)
-    };
-);
+macro_alias!(info, slog_info);
 
 /// Log debug level record
 ///
@@ -969,28 +780,14 @@ macro_rules! slog_info(
 #[macro_export]
 macro_rules! debug(
     ($l:expr, #$tag:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Debug, $tag, $($args)+)
+        $crate::log!($l, $crate::Level::Debug, $tag, $($args)+)
     };
     ($l:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Debug, "", $($args)+)
+        $crate::log!($l, $crate::Level::Debug, "", $($args)+)
     };
 );
 
-/// Log debug level record (alias)
-///
-/// Prefer shorter version, unless it clashes with
-/// existing `log` crate macro.
-///
-/// See `slog_log` for documentation.
-#[macro_export]
-macro_rules! slog_debug(
-    ($l:expr, #$tag:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Debug, $tag, $($args)+)
-    };
-    ($l:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Debug, "", $($args)+)
-    };
-);
+macro_alias!(debug, slog_debug);
 
 /// Log trace level record
 ///
@@ -998,31 +795,15 @@ macro_rules! slog_debug(
 #[macro_export]
 macro_rules! trace(
     ($l:expr, #$tag:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Trace, $tag, $($args)+)
+        $crate::log!($l, $crate::Level::Trace, $tag, $($args)+)
     };
     ($l:expr, $($args:tt)+) => {
-        log!($l, $crate::Level::Trace, "", $($args)+)
+        $crate::log!($l, $crate::Level::Trace, "", $($args)+)
     };
 );
 
-/// Log trace level record (alias)
-///
-/// Prefer shorter version, unless it clashes with
-/// existing `log` crate macro.
-///
-/// See `slog_log` for documentation.
-#[macro_export]
-macro_rules! slog_trace(
-    ($l:expr, #$tag:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Trace, $tag, $($args)+)
-    };
-    ($l:expr, $($args:tt)+) => {
-        slog_log!($l, $crate::Level::Trace, "", $($args)+)
-    };
-    ($($args:tt)+) => {
-        slog_log!($crate::Level::Trace, $($args)+)
-    };
-);
+macro_alias!(trace, slog_trace);
+
 // }}}
 
 // {{{ Logger
@@ -1062,7 +843,7 @@ macro_rules! slog_trace(
 /// means `Logger<Arc<SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>>`. See
 /// `Logger::root_typed` and `Logger::to_erased` for more information.
 #[derive(Clone)]
-pub struct Logger<D = Arc<SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>>
+pub struct Logger<D = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>>
 where
     D: SendSyncUnwindSafeDrain<Ok = (), Err = Never>,
 {
@@ -1107,7 +888,7 @@ where
     {
         Logger {
             drain: Arc::new(drain)
-                as Arc<SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>,
+                as Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>,
             list: OwnedKVList::root(values),
         }
     }
@@ -1205,13 +986,13 @@ where
     /// Rust gains trait implementation specialization.
     pub fn into_erased(
         self,
-    ) -> Logger<Arc<SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>>
+    ) -> Logger<Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>>
     where
         D: SendRefUnwindSafeDrain + 'static,
     {
         Logger {
             drain: Arc::new(self.drain)
-                as Arc<SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>,
+                as Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>,
             list: self.list,
         }
     }
@@ -1221,7 +1002,7 @@ where
     /// See `into_erased`
     pub fn to_erased(
         &self,
-    ) -> Logger<Arc<SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>>
+    ) -> Logger<Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>>
     where
         D: SendRefUnwindSafeDrain + 'static + Clone,
     {
@@ -1790,7 +1571,7 @@ impl<D: Drain> Drain for LevelFilter<D> {
 pub struct MapError<D: Drain, E> {
     drain: D,
     // eliminated dynamic dispatch, after rust learns `-> impl Trait`
-    map_fn: Box<MapErrFn<D::Err, E, Output = E>>,
+    map_fn: Box<dyn MapErrFn<D::Err, E, Output = E>>,
 }
 
 impl<D: Drain, E> MapError<D, E> {
@@ -1978,7 +1759,7 @@ where
         }
     }
 
-    fn cause(&self) -> Option<&std::error::Error> {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
         match *self {
             MutexDrainError::Mutex => None,
             MutexDrainError::Drain(ref e) => Some(e),
@@ -2491,7 +2272,7 @@ pub trait Serializer {
 /// Serializer to closure adapter.
 ///
 /// Formats all arguments as `fmt::Arguments` and passes them to a given closure.
-struct AsFmtSerializer<F>(pub F)
+struct AsFmtSerializer<F>(crate F)
 where
     F: for<'a> FnMut(Key, fmt::Arguments<'a>) -> Result;
 
@@ -2572,7 +2353,7 @@ pub trait Value {
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result;
 }
 
@@ -2584,7 +2365,7 @@ where
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (*self).serialize(record, key, serializer)
     }
@@ -2596,7 +2377,7 @@ macro_rules! impl_value_for{
             fn serialize(&self,
                          _record : &Record,
                          key : Key,
-                         serializer : &mut Serializer
+                         serializer : &mut dyn Serializer
                          ) -> Result {
                 serializer.$f(key, *self)
             }
@@ -2624,7 +2405,7 @@ impl Value for () {
         &self,
         _record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         serializer.emit_unit(key)
     }
@@ -2635,7 +2416,7 @@ impl Value for str {
         &self,
         _record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         serializer.emit_str(key, self)
     }
@@ -2646,7 +2427,7 @@ impl<'a> Value for fmt::Arguments<'a> {
         &self,
         _record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         serializer.emit_arguments(key, self)
     }
@@ -2657,7 +2438,7 @@ impl Value for String {
         &self,
         _record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         serializer.emit_str(key, self.as_str())
     }
@@ -2668,7 +2449,7 @@ impl<T: Value> Value for Option<T> {
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         match *self {
             Some(ref s) => s.serialize(record, key, serializer),
@@ -2685,7 +2466,7 @@ where
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (**self).serialize(record, key, serializer)
     }
@@ -2698,7 +2479,7 @@ where
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (**self).serialize(record, key, serializer)
     }
@@ -2712,7 +2493,7 @@ where
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (**self).serialize(record, key, serializer)
     }
@@ -2726,7 +2507,7 @@ where
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         self.0.serialize(record, key, serializer)
     }
@@ -2737,7 +2518,7 @@ impl<'a> Value for std::path::Display<'a> {
         &self,
         _record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         serializer.emit_arguments(key, &format_args!("{}", *self))
     }
@@ -2756,7 +2537,7 @@ where
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (self.0)(record).serialize(record, key, serializer)
     }
@@ -2773,7 +2554,7 @@ pub type PushFnSerializer<'a> = PushFnValueSerializer<'a>;
 pub struct PushFnValueSerializer<'a> {
     record: &'a Record<'a>,
     key: Key,
-    serializer: &'a mut Serializer,
+    serializer: &'a mut dyn Serializer,
     done: bool,
 }
 
@@ -2851,7 +2632,7 @@ where
         &self,
         record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         let ser = PushFnValueSerializer {
             record: record,
@@ -2920,7 +2701,7 @@ pub trait KV {
     ///
     /// `KV` should call respective `Serializer` methods
     /// for each key-value pair it contains.
-    fn serialize(&self, record: &Record, serializer: &mut Serializer)
+    fn serialize(&self, record: &Record, serializer: &mut dyn Serializer)
         -> Result;
 }
 
@@ -2931,7 +2712,7 @@ where
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (**self).serialize(record, serializer)
     }
@@ -2992,7 +2773,7 @@ where
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         self.1.serialize(record, self.0.clone(), serializer)
     }
@@ -3002,7 +2783,7 @@ impl KV for () {
     fn serialize(
         &self,
         _record: &Record,
-        _serializer: &mut Serializer,
+        _serializer: &mut dyn Serializer,
     ) -> Result {
         Ok(())
     }
@@ -3012,7 +2793,7 @@ impl<T: KV, R: KV> KV for (T, R) {
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         try!(self.0.serialize(record, serializer));
         self.1.serialize(record, serializer)
@@ -3026,7 +2807,7 @@ where
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (**self).serialize(record, serializer)
     }
@@ -3039,7 +2820,7 @@ where
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         (**self).serialize(record, serializer)
     }
@@ -3052,7 +2833,7 @@ where
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         self.0.serialize(record, serializer)
     }
@@ -3062,7 +2843,7 @@ impl<'a> KV for BorrowedKV<'a> {
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         self.0.serialize(record, serializer)
     }
@@ -3104,7 +2885,7 @@ pub struct BorrowedKV<'a>(
     /// macros should be used instead to create
     /// `BorrowedKV` instances.
     #[doc(hidden)]
-    pub &'a KV,
+    pub &'a dyn KV,
 );
 
 // }}}
@@ -3114,19 +2895,19 @@ struct OwnedKVListNode<T>
 where
     T: SendSyncRefUnwindSafeKV + 'static,
 {
-    next_node: Arc<SendSyncRefUnwindSafeKV + 'static>,
+    next_node: Arc<dyn SendSyncRefUnwindSafeKV + 'static>,
     kv: T,
 }
 
 struct MultiListNode {
-    next_node: Arc<SendSyncRefUnwindSafeKV + 'static>,
-    node: Arc<SendSyncRefUnwindSafeKV + 'static>,
+    next_node: Arc<dyn SendSyncRefUnwindSafeKV + 'static>,
+    node: Arc<dyn SendSyncRefUnwindSafeKV + 'static>,
 }
 
 /// Chain of `SyncMultiSerialize`-s of a `Logger` and its ancestors
 #[derive(Clone)]
 pub struct OwnedKVList {
-    node: Arc<SendSyncRefUnwindSafeKV + 'static>,
+    node: Arc<dyn SendSyncRefUnwindSafeKV + 'static>,
 }
 
 impl<T> KV for OwnedKVListNode<T>
@@ -3136,7 +2917,7 @@ where
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         try!(self.kv.serialize(record, serializer));
         try!(self.next_node.serialize(record, serializer));
@@ -3149,7 +2930,7 @@ impl KV for MultiListNode {
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         try!(self.next_node.serialize(record, serializer));
         try!(self.node.serialize(record, serializer));
@@ -3162,7 +2943,7 @@ impl KV for OwnedKVList {
     fn serialize(
         &self,
         record: &Record,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         try!(self.node.serialize(record, serializer));
 
@@ -3223,7 +3004,7 @@ impl OwnedKVList {
     /// New `OwnedKVList` node with an existing parent
     fn new<T>(
         values: OwnedKV<T>,
-        next_node: Arc<SendSyncRefUnwindSafeKV + 'static>,
+        next_node: Arc<dyn SendSyncRefUnwindSafeKV + 'static>,
     ) -> Self
     where
         T: SendSyncRefUnwindSafeKV + 'static,
@@ -3312,7 +3093,7 @@ impl std::error::Error for Error {
         }
     }
 
-    fn cause(&self) -> Option<&std::error::Error> {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
         match *self {
             Error::Io(ref e) => Some(e),
             Error::Fmt(ref e) => Some(e),
@@ -3405,7 +3186,7 @@ impl<T: fmt::Debug> Value for FmtDebug<T> {
         &self,
         _record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         serializer.emit_arguments(key, &format_args!("{:?}", self.0))
     }
@@ -3420,7 +3201,7 @@ impl<T: fmt::Display> Value for FmtDisplay<T> {
         &self,
         _record: &Record,
         key: Key,
-        serializer: &mut Serializer,
+        serializer: &mut dyn Serializer,
     ) -> Result {
         serializer.emit_arguments(key, &format_args!("{}", self.0))
     }
@@ -3430,7 +3211,7 @@ impl<T: fmt::Display> Value for FmtDisplay<T> {
 // {{{ Slog v1 Compat
 #[deprecated(note = "Renamed to `Value`")]
 /// Compatibility name to ease upgrading from `slog v1`
-pub type Serialize = Value;
+pub type Serialize = dyn Value;
 
 #[deprecated(note = "Renamed to `PushFnValue`")]
 /// Compatibility name to ease upgrading from `slog v1`
